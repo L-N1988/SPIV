@@ -424,8 +424,12 @@ def demo_stereo_reconstruction():
     # Example usage:
 
     # 1. Calibrate stereo cameras (you need checkerboard calibration images)
-    left_calibration_images = [cv2.imread(f"left_calib_{i:02d}.jpg") for i in range(20)]
-    right_calibration_images = [cv2.imread(f"right_calib_{i:02d}.jpg") for i in range(20)]
+    left_calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1,10)]
+    right_calibration_images = [cv2.imread(f"./right_calibration_figs/{i:02d}.jpg") for i in range(1, 10)]
+    if None in left_calibration_images or None in right_calibration_images:
+        print("Error: Calibration images not found")
+        return
+
     reconstructor.calibrate_stereo_cameras(left_calibration_images, right_calibration_images,
                                            pattern_size=(8, 6), # A4 - 25mm squares - 8x6 verticies, 9x7 squares
                                            square_size=25) # [mm]
