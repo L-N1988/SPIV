@@ -371,7 +371,7 @@ def demo_usage():
     dewarper = TiltCameraDewarper()
     
     # Load image (replace with your image path)
-    image_path = "./figures/checkerboard.jpg"  # Change this to your image path
+    image_path = "./figures/calibration_plate.jpg"  # Change this to your image path
     image = cv2.imread(image_path)
     
     if image is None:

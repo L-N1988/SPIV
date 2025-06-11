@@ -2,3 +2,5 @@
 *.log
 *.gz
 *.gz(busy)
+.vscode
+**/.vscode/
