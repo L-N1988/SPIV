@@ -73,6 +73,41 @@ class StereoReconstructor:
                                             (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
                 imgpoints.append(corners2)
 
+                ################################################################
+                # DEBUG CODE: uncomment it when debuging
+                # Draw and display the corners
+                # Reference: https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+                img_height, img_width = img.shape[:2]
+                new_width = img_width // 2
+                new_height = img_height // 2
+                resized_img = cv2.resize(gray, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+                cv2.namedWindow("Corners", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("Corners", new_width, new_height)
+                # Default marker is too small to see and white line
+                # cv2.drawChessboardCorners(resized_img, pattern_size, corners2 / 2, ret)
+
+                # Better marker visualization of corners
+                color = (255, 0, 0)     # Red
+                radius = 10             # Bigger than default
+                thickness = -1          # Filled circle
+
+                for corner in corners2:
+                    x, y = int(corner[0][0]/2), int(corner[0][1]/2)
+                    cv2.circle(resized_img, (x, y), radius, color, thickness)
+
+                # Optionally add index labels
+                for i, corner in enumerate(corners2):
+                    x, y = int(corner[0][0]/2), int(corner[0][1]/2)
+                    cv2.putText(resized_img, str(i), (x + 10, y + 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 2)
+
+                cv2.moveWindow("Corners", 40,30)  # Move it to (40,30)
+                cv2.imshow("Corners", resized_img)
+                cv2.waitKey(5000)
+                cv2.destroyAllWindows()
+                ################################################################
+
         # Camera calibration
         ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
                 objpoints, imgpoints, gray.shape[::-1], None, None)
@@ -426,9 +461,6 @@ def demo_stereo_reconstruction():
     # 1. Calibrate stereo cameras (you need checkerboard calibration images)
     left_calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1,10)]
     right_calibration_images = [cv2.imread(f"./right_calibration_figs/{i:02d}.jpg") for i in range(1, 10)]
-    if None in left_calibration_images or None in right_calibration_images:
-        print("Error: Calibration images not found")
-        return
 
     reconstructor.calibrate_stereo_cameras(left_calibration_images, right_calibration_images,
                                            pattern_size=(8, 6), # A4 - 25mm squares - 8x6 verticies, 9x7 squares

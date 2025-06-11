@@ -1,0 +1,13 @@
+# ~/.pdbrc
+
+# Set an alias
+alias ll list
+
+# Breakpoint on module load
+# break stereo_reconstruction.py:430
+# break stereo_reconstruction.py:55
+# break stereo_reconstruction.py:66
+# break stereo_reconstruction.py:72
+
+# Break to see calibration corner points in checkerboard
+break stereo_reconstruction.py:108

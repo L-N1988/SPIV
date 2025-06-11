@@ -4,3 +4,4 @@
 *.gz(busy)
 .vscode
 **/.vscode/
+__pycache__/
