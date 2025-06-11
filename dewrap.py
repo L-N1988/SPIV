@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import json
+import pickle
 from typing import Tuple, List, Optional
 
 class TiltCameraDewarper:
@@ -8,6 +10,7 @@ class TiltCameraDewarper:
         self.src_points = None
         self.dst_points = None
         self.transform_matrix = None
+        self.output_size = None
         
     def manual_point_selection(self, image: np.ndarray, title: str = "Select 4 corners") -> List[Tuple[int, int]]:
         """
@@ -137,6 +140,11 @@ class TiltCameraDewarper:
         # Calculate perspective transform matrix
         self.transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
         
+        # Store calibration data
+        self.src_points = src_points
+        self.dst_points = dst_points
+        self.output_size = (width, height)
+        
         # Apply perspective correction
         dewarped = cv2.warpPerspective(image, self.transform_matrix, (width, height))
         
@@ -167,6 +175,184 @@ class TiltCameraDewarper:
         src_points = np.array(points, dtype=np.float32)
         return self.dewarp_image(image, src_points)
     
+    def save_calibration(self, filename: str, format: str = 'numpy') -> None:
+        """
+        Save the calibration matrix and parameters to file
+        
+        Args:
+            filename: Path to save the calibration file
+            format: 'numpy' (npz), 'pickle' (pkl), or 'json' (limited precision)
+        """
+        if self.transform_matrix is None:
+            raise ValueError("No calibration data available. Perform dewarping first.")
+        
+        calibration_data = {
+            'transform_matrix': self.transform_matrix,
+            'src_points': self.src_points,
+            'dst_points': self.dst_points,
+            'output_size': self.output_size
+        }
+        
+        if format.lower() == 'numpy':
+            # Save as numpy compressed format (.npz)
+            if not filename.endswith('.npz'):
+                filename += '.npz'
+            np.savez_compressed(filename, **calibration_data)
+            
+        elif format.lower() == 'pickle':
+            # Save as pickle format (.pkl)
+            if not filename.endswith('.pkl'):
+                filename += '.pkl'
+            with open(filename, 'wb') as f:
+                pickle.dump(calibration_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+                
+        elif format.lower() == 'json':
+            # Save as JSON format (limited precision)
+            if not filename.endswith('.json'):
+                filename += '.json'
+            # Convert numpy arrays to lists for JSON serialization
+            json_data = {
+                'transform_matrix': self.transform_matrix.tolist(),
+                'src_points': self.src_points.tolist(),
+                'dst_points': self.dst_points.tolist(),
+                'output_size': self.output_size
+            }
+            with open(filename, 'w') as f:
+                json.dump(json_data, f, indent=2)
+                
+        else:
+            raise ValueError("Format must be 'numpy', 'pickle', or 'json'")
+        
+        print(f"Calibration saved to: {filename}")
+    
+    def load_calibration(self, filename: str, format: str = None) -> None:
+        """
+        Load calibration matrix and parameters from file
+        
+        Args:
+            filename: Path to the calibration file
+            format: 'numpy', 'pickle', or 'json'. If None, inferred from filename
+        """
+        # Infer format from filename if not specified
+        if format is None:
+            if filename.endswith('.npz'):
+                format = 'numpy'
+            elif filename.endswith('.pkl'):
+                format = 'pickle'
+            elif filename.endswith('.json'):
+                format = 'json'
+            else:
+                raise ValueError("Cannot infer format. Please specify format parameter.")
+        
+        if format.lower() == 'numpy':
+            data = np.load(filename)
+            self.transform_matrix = data['transform_matrix']
+            self.src_points = data['src_points']
+            self.dst_points = data['dst_points']
+            self.output_size = tuple(data['output_size'])
+            
+        elif format.lower() == 'pickle':
+            with open(filename, 'rb') as f:
+                data = pickle.load(f)
+            self.transform_matrix = data['transform_matrix']
+            self.src_points = data['src_points']
+            self.dst_points = data['dst_points']
+            self.output_size = data['output_size']
+            
+        elif format.lower() == 'json':
+            with open(filename, 'r') as f:
+                data = json.load(f)
+            self.transform_matrix = np.array(data['transform_matrix'], dtype=np.float32)
+            self.src_points = np.array(data['src_points'], dtype=np.float32)
+            self.dst_points = np.array(data['dst_points'], dtype=np.float32)
+            self.output_size = tuple(data['output_size'])
+            
+        else:
+            raise ValueError("Format must be 'numpy', 'pickle', or 'json'")
+        
+        print(f"Calibration loaded from: {filename}")
+    
+    def apply_saved_calibration(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply previously saved calibration to a new image
+        
+        Args:
+            image: Input image to dewarp
+            
+        Returns:
+            Dewarped image using saved calibration
+        """
+        if self.transform_matrix is None:
+            raise ValueError("No calibration loaded. Use load_calibration() first.")
+        
+        # Apply the stored transformation
+        dewarped = cv2.warpPerspective(image, self.transform_matrix, self.output_size)
+        return dewarped
+    
+    def batch_process_images(self, image_paths: List[str], output_dir: str = "dewarped/") -> None:
+        """
+        Apply saved calibration to multiple images
+        
+        Args:
+            image_paths: List of input image paths
+            output_dir: Directory to save dewarped images
+        """
+        import os
+        
+        if self.transform_matrix is None:
+            raise ValueError("No calibration loaded. Use load_calibration() first.")
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        for img_path in image_paths:
+            try:
+                # Load image
+                image = cv2.imread(img_path)
+                if image is None:
+                    print(f"Warning: Could not load {img_path}")
+                    continue
+                
+                # Apply calibration
+                dewarped = self.apply_saved_calibration(image)
+                
+                # Generate output filename
+                basename = os.path.basename(img_path)
+                name, ext = os.path.splitext(basename)
+                output_path = os.path.join(output_dir, f"{name}_dewarped{ext}")
+                
+                # Save dewarped image
+                cv2.imwrite(output_path, dewarped)
+                print(f"Processed: {img_path} -> {output_path}")
+                
+            except Exception as e:
+                print(f"Error processing {img_path}: {str(e)}")
+    
+    def visualize_calibration(self, original_image: np.ndarray) -> None:
+        """
+        Visualize the calibration points and transformation
+        """
+        if self.src_points is None:
+            print("No calibration data available")
+            return
+        
+        # Create visualization
+        vis_img = original_image.copy()
+        
+        # Draw source points and connections
+        pts = self.src_points.astype(int)
+        for i, pt in enumerate(pts):
+            cv2.circle(vis_img, tuple(pt), 8, (0, 255, 0), -1)
+            cv2.putText(vis_img, str(i+1), (pt[0]+10, pt[1]-10), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Draw quadrilateral
+        cv2.polylines(vis_img, [pts], True, (255, 0, 0), 2)
+        
+        cv2.imshow("Calibration Points", vis_img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    
     def dewarp_with_known_points(self, image: np.ndarray, points: List[Tuple[int, int]]) -> np.ndarray:
         """
         Dewarp using predefined points
@@ -185,7 +371,7 @@ def demo_usage():
     dewarper = TiltCameraDewarper()
     
     # Load image (replace with your image path)
-    image_path = "./figures/ssd_box2.jpg"  # Change this to your image path
+    image_path = "./figures/checkerboard.jpg"  # Change this to your image path
     image = cv2.imread(image_path)
     
     if image is None:
@@ -226,6 +412,7 @@ def demo_usage():
     cv2.imshow("Manual Dewarped", dewarped_manual)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    dewarper.save_calibration("calibration", format='numpy')
     
     # Method 3: Using known points
     # Example points (adjust for your image)
