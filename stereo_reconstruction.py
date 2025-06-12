@@ -21,8 +21,8 @@ class StereoReconstructor:
         self.right_dist_coeffs = None
 
         # Stereo calibration parameters
-        self.rotation_matrix = None
-        self.translation_vector = None
+        self.rotation_matrix = None # Rotation matrix from the coordinate system of the first camera to the second
+        self.translation_vector = None # Translation vector from the coordinate system of the first camera to the second
         self.essential_matrix = None
         self.fundamental_matrix = None
 
@@ -123,6 +123,7 @@ class StereoReconstructor:
 
         Reference: https://stackoverflow.com/a/58188465/18736354
         """
+        # 标定立体相机必须标定照片必须成对拍摄，且每一对拍摄过程中两台相机的空间相对关系不变!!!
         if len(left_images) != len(right_images):
             raise ValueError("Number of left and right images must be equal")
 
@@ -165,6 +166,8 @@ class StereoReconstructor:
 
         print("Performing stereo calibration...")
         # Stereo calibration
+        # 由于拍摄成对标定照片时，两台相机的空间相对关系不变，因此
+        # rotation_matrix和translation_vector的元素均为常值
         image_size = gray_left.shape[::-1]
         ret, _, _, _, _, self.rotation_matrix, self.translation_vector, \
                 self.essential_matrix, self.fundamental_matrix = cv2.stereoCalibrate(
@@ -460,9 +463,11 @@ def demo_stereo_reconstruction():
     # Example usage:
 
     # 1. Calibrate stereo cameras (you need checkerboard calibration images)
+    # 拍摄一对左右标定图片时，左相机与右相机的相对空间关系保持不变
     left_calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1,10)]
     right_calibration_images = [cv2.imread(f"./right_calibration_figs/{i:02d}.jpg") for i in range(1, 10)]
 
+    # 标定照片成对用于后续立体视觉校正，计算二号相机相对一号相机的旋转和平移
     reconstructor.calibrate_stereo_cameras(left_calibration_images, right_calibration_images,
                                            pattern_size=(8, 6), # A4 - 25mm squares - 8x6 verticies, 9x7 squares
                                            square_size=25) # [mm]
