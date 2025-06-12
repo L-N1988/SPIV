@@ -10,4 +10,8 @@ alias ll list
 # break stereo_reconstruction.py:72
 
 # Break to see calibration corner points in checkerboard
-break stereo_reconstruction.py:108
+# break stereo_reconstruction.py:108
+
+break stereo_reconstruction.py:398
+break stereo_reconstruction.py:351
+break stereo_reconstruction.py:241

@@ -1,3 +1,5 @@
+import sys
+import os
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -363,7 +365,7 @@ class TiltCameraDewarper:
         src_points = np.array(points, dtype=np.float32)
         return self.dewarp_image(image, src_points)
 
-def demo_usage():
+def demo_usage(image_path: str):
     """
     Demonstration of how to use the TiltCameraDewarper class
     """
@@ -371,7 +373,7 @@ def demo_usage():
     dewarper = TiltCameraDewarper()
     
     # Load image (replace with your image path)
-    image_path = "./figures/calibration_plate.jpg"  # Change this to your image path
+    # image_path = "./figures/calibration_plate.jpg"  # Change this to your image path
     image = cv2.imread(image_path)
     
     if image is None:
@@ -394,17 +396,17 @@ def demo_usage():
         matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
         image = cv2.warpPerspective(sample_img, matrix, (600, 400))
         
-    # Method 1: Automatic detection
-    print("Trying automatic detection...")
-    dewarped_auto = dewarper.dewarp_automatic(image.copy())
-    
-    if dewarped_auto is not None:
-        cv2.imshow("Original", image)
-        cv2.imshow("Auto Dewarped", dewarped_auto)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-    else:
-        print("Automatic detection failed.")
+    # # Method 1: Automatic detection
+    # print("Trying automatic detection...")
+    # dewarped_auto = dewarper.dewarp_automatic(image.copy())
+    # 
+    # if dewarped_auto is not None:
+    #     cv2.imshow("Original", image)
+    #     cv2.imshow("Auto Dewarped", dewarped_auto)
+    #     cv2.waitKey(0)
+    #     cv2.destroyAllWindows()
+    # else:
+    #     print("Automatic detection failed.")
     
     # Method 2: Manual selection (uncomment to use)
     print("Starting manual selection...")
@@ -412,7 +414,8 @@ def demo_usage():
     cv2.imshow("Manual Dewarped", dewarped_manual)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    dewarper.save_calibration("calibration", format='numpy')
+    save_filename = os.path.splitext(image_path)[0]
+    dewarper.save_calibration(save_filename, format='numpy')
     
     # Method 3: Using known points
     # Example points (adjust for your image)
@@ -420,4 +423,6 @@ def demo_usage():
     # dewarped_known = dewarper.dewarp_with_known_points(image, known_points)
 
 if __name__ == "__main__":
-    demo_usage()
+    # Read image path from cmd line
+    image_path = sys.argv[1]
+    demo_usage(image_path)

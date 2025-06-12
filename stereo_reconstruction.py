@@ -74,38 +74,38 @@ class StereoReconstructor:
                 imgpoints.append(corners2)
 
                 ################################################################
-                # DEBUG CODE: uncomment it when debuging
-                # Draw and display the corners
-                # Reference: https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
-                img_height, img_width = img.shape[:2]
-                new_width = img_width // 2
-                new_height = img_height // 2
-                resized_img = cv2.resize(gray, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                # # DEBUG CODE: uncomment it when debuging
+                # # Draw and display the corners
+                # # Reference: https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+                # img_height, img_width = img.shape[:2]
+                # new_width = img_width // 2
+                # new_height = img_height // 2
+                # resized_img = cv2.resize(gray, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
-                cv2.namedWindow("Corners", cv2.WINDOW_NORMAL)
-                cv2.resizeWindow("Corners", new_width, new_height)
-                # Default marker is too small to see and white line
-                # cv2.drawChessboardCorners(resized_img, pattern_size, corners2 / 2, ret)
+                # cv2.namedWindow("Corners", cv2.WINDOW_NORMAL)
+                # cv2.resizeWindow("Corners", new_width, new_height)
+                # # Default marker is too small to see and white line
+                # # cv2.drawChessboardCorners(resized_img, pattern_size, corners2 / 2, ret)
 
-                # Better marker visualization of corners
-                color = (255, 0, 0)     # Red
-                radius = 10             # Bigger than default
-                thickness = -1          # Filled circle
+                # # Better marker visualization of corners
+                # color = (255, 0, 0)     # Red
+                # radius = 10             # Bigger than default
+                # thickness = -1          # Filled circle
 
-                for corner in corners2:
-                    x, y = int(corner[0][0]/2), int(corner[0][1]/2)
-                    cv2.circle(resized_img, (x, y), radius, color, thickness)
+                # for corner in corners2:
+                #     x, y = int(corner[0][0]/2), int(corner[0][1]/2)
+                #     cv2.circle(resized_img, (x, y), radius, color, thickness)
 
-                # Optionally add index labels
-                for i, corner in enumerate(corners2):
-                    x, y = int(corner[0][0]/2), int(corner[0][1]/2)
-                    cv2.putText(resized_img, str(i), (x + 10, y + 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 2)
+                # # Optionally add index labels
+                # for i, corner in enumerate(corners2):
+                #     x, y = int(corner[0][0]/2), int(corner[0][1]/2)
+                #     cv2.putText(resized_img, str(i), (x + 10, y + 10),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 2)
 
-                cv2.moveWindow("Corners", 40,30)  # Move it to (40,30)
-                cv2.imshow("Corners", resized_img)
-                cv2.waitKey(5000)
-                cv2.destroyAllWindows()
+                # cv2.moveWindow("Corners", 40,30)  # Move it to (40,30)
+                # cv2.imshow("Corners", resized_img)
+                # cv2.waitKey(5000)
+                # cv2.destroyAllWindows()
                 ################################################################
 
         # Camera calibration
@@ -174,6 +174,7 @@ class StereoReconstructor:
                         image_size,
                         flags=cv2.CALIB_FIX_INTRINSIC
                         )
+        print(f"Stereo calibration RMS reprojection error: {ret:.2f} pixels")
 
         print("Computing rectification transforms...")
         # Stereo rectification
@@ -291,8 +292,8 @@ class StereoReconstructor:
         """
         # First, dewarp images using your existing dewarper if needed
         # (Optional: uncomment if you want to dewarp before stereo processing)
-        left_img = self.left_dewarper.apply_saved_calibration(left_img)
-        right_img = self.right_dewarper.apply_saved_calibration(right_img)
+        # left_img = self.left_dewarper.apply_saved_calibration(left_img)
+        # right_img = self.right_dewarper.apply_saved_calibration(right_img)
 
         # Rectify images
         left_rect, right_rect = self.rectify_images(left_img, right_img)
@@ -471,14 +472,14 @@ def demo_stereo_reconstruction():
     reconstructor.load_calibration("stereo_calibration.npz")
 
     # 3. Load stereo pair for reconstruction
-    left_img = cv2.imread("left_image.jpg")
-    right_img = cv2.imread("right_image.jpg")
+    left_img = cv2.imread("./reconstruction_figs/left_image.jpg")
+    right_img = cv2.imread("./reconstruction_figs/right_image.jpg")
 
     # 4. Optionally dewarp images first using your existing dewarper
-    reconstructor.left_dewarper.load_calibration("left_camera_dewarp.npz")
-    reconstructor.right_dewarper.load_calibration("right_camera_dewarp.npz")
-    left_img = reconstructor.left_dewarper.apply_saved_calibration(left_img)
-    right_img = reconstructor.right_dewarper.apply_saved_calibration(right_img)
+    # reconstructor.left_dewarper.load_calibration("./reconstruction_figs/left_image.npz")
+    # reconstructor.right_dewarper.load_calibration("./reconstruction_figs/right_image.npz")
+    # left_img = reconstructor.left_dewarper.apply_saved_calibration(left_img)
+    # right_img = reconstructor.right_dewarper.apply_saved_calibration(right_img)
 
     # 5. Perform 3D reconstruction
     points_3d, colors = reconstructor.reconstruct_3d_field(left_img, right_img)
