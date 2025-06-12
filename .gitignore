@@ -5,3 +5,6 @@
 .vscode
 **/.vscode/
 __pycache__/
+*.fdb_latexmk
+*.fls
+*.xdv
