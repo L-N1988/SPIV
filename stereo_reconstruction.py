@@ -112,6 +112,9 @@ class StereoReconstructor:
         ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
                 objpoints, imgpoints, gray.shape[::-1], None, None)
 
+        print(f"Single camera calibration RMS reprojection error: {ret:.2f} pixels")
+        print("Camera intrinsic matrix: \n", camera_matrix)
+        print("Camera distorion coeffs: ", dist_coeffs)
         return camera_matrix, dist_coeffs
 
     def calibrate_stereo_cameras(self, left_images: List[np.ndarray], 
@@ -157,12 +160,22 @@ class StereoReconstructor:
                 objpoints.append(objp)
 
                 corners_left = cv2.cornerSubPix(gray_left, corners_left, (11, 11), (-1, -1),
-                                                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+                                                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001))
                 corners_right = cv2.cornerSubPix(gray_right, corners_right, (11, 11), (-1, -1),
-                                                 (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+                                                 (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001))
 
                 imgpoints_left.append(corners_left)
                 imgpoints_right.append(corners_right)
+
+                ################################################################
+                # # DEBUG CODE: uncomment it when debuging
+                # cv2.drawChessboardCorners(left_img, (5,8), corners_left, ret_left)
+                # cv2.imshow('img', left_img)
+     
+                # cv2.drawChessboardCorners(right_img, (5,8), corners_right, ret_right)
+                # cv2.imshow('img2', right_img)
+                # k = cv2.waitKey(500)
+                ################################################################
 
         print("Performing stereo calibration...")
         # Stereo calibration
@@ -178,6 +191,8 @@ class StereoReconstructor:
                         flags=cv2.CALIB_FIX_INTRINSIC
                         )
         print(f"Stereo calibration RMS reprojection error: {ret:.2f} pixels")
+        print("Stereo calibration rotation matrix: \n", self.rotation_matrix)
+        print("Stereo calibration translation vector: \n", self.translation_vector)
 
         print("Computing rectification transforms...")
         # Stereo rectification
@@ -188,6 +203,11 @@ class StereoReconstructor:
                         self.right_camera_matrix, self.right_dist_coeffs,
                         image_size, self.rotation_matrix, self.translation_vector
                         )
+
+        # # Werid code
+        # # Reference: https://stackoverflow.com/a/61369840/18736354
+        # self.rectification_transform_left = self.rectification_transform_left.dot(np.linalg.inv(self.left_camera_matrix))
+        # self.rectification_transform_right = self.rectification_transform_right.dot(np.linalg.inv(self.right_camera_matrix))
 
         print("Stereo calibration completed!")
 
@@ -202,17 +222,26 @@ class StereoReconstructor:
             self.stereo_matcher = cv2.StereoBM_create(numDisparities=16*5, blockSize=21)
         elif matcher_type == 'SGBM':
             # Semi-Global Block Matching (better quality)
+            # Define parameters
+            window_size = 7
+            min_disp = 16
+            nDispFactor = 14  # Adjust this (14 is good), https://youtu.be/gffZ3S9pBUE?si=ReCcemXyShwKyF-h&t=415
+            num_disp = 16 * nDispFactor - min_disp
+
+            # Create StereoSGBM object
             self.stereo_matcher = cv2.StereoSGBM_create(
-                    minDisparity=0,
-                    numDisparities=16*5,  # Max disparity minus min disparity
-                    blockSize=5,
-                    P1=8 * 3 * 5**2,  # Controls disparity smoothness
-                    P2=32 * 3 * 5**2,  # Controls disparity smoothness
-                    disp12MaxDiff=1,
-                    uniquenessRatio=10,
-                    speckleWindowSize=100,
-                    speckleRange=32
-                    )
+                minDisparity=min_disp,
+                numDisparities=num_disp,
+                blockSize=window_size,
+                P1=8 * 3 * window_size ** 2, # Controls disparity smoothness
+                P2=32 * 3 * window_size ** 2, # Controls disparity smoothness
+                disp12MaxDiff=1,
+                uniquenessRatio=15,
+                speckleWindowSize=0,
+                speckleRange=2,
+                preFilterCap=63,
+                mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
+            )
         else:
             raise ValueError("matcher_type must be 'BM' or 'SGBM'")
 
@@ -241,6 +270,29 @@ class StereoReconstructor:
         # Apply rectification
         left_rectified = cv2.remap(left_img, left_map1, left_map2, cv2.INTER_LINEAR)
         right_rectified = cv2.remap(right_img, right_map1, right_map2, cv2.INTER_LINEAR)
+
+        ################################################################
+        # # DEBUG CODE: uncomment it when debuging
+        # # Draw images after rectification
+        # img_height, img_width = left_rectified.shape[:2]
+        # new_width = img_width // 2
+        # new_height = img_height // 2
+        # resized_left = cv2.resize(left_rectified, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        # resized_right = cv2.resize(right_rectified, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+        # cv2.namedWindow("Left rectified image", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("Left rectified image", new_width, new_height)
+        # cv2.moveWindow("Left rectified image", 40,30)  # Move it to (40,30)
+        # cv2.imshow("Left rectified image", resized_left)
+
+        # cv2.namedWindow("Right rectified image", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("Right rectified image", new_width, new_height)
+        # cv2.moveWindow("Right rectified image", 40,1030)  # Move it to (40,30)
+        # cv2.imshow("Right rectified image", resized_right)
+
+        # cv2.waitKey(5000)
+        # cv2.destroyAllWindows()
+        ################################################################
 
         return left_rectified, right_rectified
 
@@ -464,8 +516,8 @@ def demo_stereo_reconstruction():
 
     # 1. Calibrate stereo cameras (you need checkerboard calibration images)
     # 拍摄一对左右标定图片时，左相机与右相机的相对空间关系保持不变
-    left_calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1,10)]
-    right_calibration_images = [cv2.imread(f"./right_calibration_figs/{i:02d}.jpg") for i in range(1, 10)]
+    left_calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1, 8)]
+    right_calibration_images = [cv2.imread(f"./right_calibration_figs/{i:02d}.jpg") for i in range(1, 8)]
 
     # 标定照片成对用于后续立体视觉校正，计算二号相机相对一号相机的旋转和平移
     reconstructor.calibrate_stereo_cameras(left_calibration_images, right_calibration_images,
@@ -477,8 +529,8 @@ def demo_stereo_reconstruction():
     reconstructor.load_calibration("stereo_calibration.npz")
 
     # 3. Load stereo pair for reconstruction
-    left_img = cv2.imread("./reconstruction_figs/left_image.jpg")
-    right_img = cv2.imread("./reconstruction_figs/right_image.jpg")
+    left_img = cv2.imread("./reconstruction_figs/left_book.jpg")
+    right_img = cv2.imread("./reconstruction_figs/right_book.jpg")
 
     # 4. Optionally dewarp images first using your existing dewarper
     # reconstructor.left_dewarper.load_calibration("./reconstruction_figs/left_image.npz")
