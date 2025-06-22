@@ -234,49 +234,10 @@ class TiltCameraDewarper:
             raise ValueError("No calibration loaded. Use load_calibration() first.")
 
         # Apply the stored transformation
-        dewarped = cv2.warpPerspective(image, self.transform_matrix, image.shape[:2][::-1])
+        dewarped = cv2.warpPerspective(
+            image, self.transform_matrix, image.shape[:2][::-1]
+        )
         return dewarped
-
-    def batch_process_images(
-        self, image_paths: List[str], output_dir: str = "dewarped/"
-    ) -> None:
-        """
-        Apply saved calibration to multiple images
-
-        Args:
-            image_paths: List of input image paths
-            output_dir: Directory to save dewarped images
-        """
-        import os
-
-        if self.transform_matrix is None:
-            raise ValueError("No calibration loaded. Use load_calibration() first.")
-
-        # Create output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
-
-        for img_path in image_paths:
-            try:
-                # Load image
-                image = cv2.imread(img_path)
-                if image is None:
-                    print(f"Warning: Could not load {img_path}")
-                    continue
-
-                # Apply calibration
-                dewarped = self.apply_saved_calibration(image)
-
-                # Generate output filename
-                basename = os.path.basename(img_path)
-                name, ext = os.path.splitext(basename)
-                output_path = os.path.join(output_dir, f"{name}_dewarped{ext}")
-
-                # Save dewarped image
-                cv2.imwrite(output_path, dewarped)
-                print(f"Processed: {img_path} -> {output_path}")
-
-            except Exception as e:
-                print(f"Error processing {img_path}: {str(e)}")
 
     def calibrate_single_camera(
         self,
@@ -318,19 +279,24 @@ class TiltCameraDewarper:
             )
 
             # Compute the homography matrix
-            self.transform_matrix, _ = cv2.findHomography(corners2, objp)
+            # FIXME: findHomography args should be pixel dimension, so the objp should multiply pixel size
+            self.transform_matrix, _ = cv2.findHomography(corners2[:, 0, :], objp[:, :2])
+            print("Camera homography matrix: \n", self.transform_matrix)
 
-            # Apply the homography transformation, preserve image size
-            output_image = cv2.warpPerspective(image, self.transform_matrix, image.shape[:2][::-1])
+            # Apply the homography transformation (without correction for distortion)
+            # FIXME: correct distortion for output_image
+            output_image = cv2.warpPerspective(
+                image, self.transform_matrix, image.shape[:2][::-1]
+            )
 
-            # Camera calibration
+            # FIXME: Camera calibration
             # ret: This is the primary return value and represents the root mean square (RMS) reprojection error. Values between 0.1 and 1.0 are considered good.
             # camera_matrix: This is a 3x3 matrix that represents the intrinsic parameters of the camera.
             # dist_coeffs: This is a vector (k1, k2, p1, p2, k3) that represents the distortion coefficients of the camera.
             # rvecs: This is a vector that represents the rotation vector of the camera.  Each vector represents the rotation of the camera coordinate system relative to the world coordinate system for that specific image.
             # tvecs: This is a vector that represents the translation vector of the camera.  Each vector represents the translation of the camera coordinate system relative to the world coordinate system for that specific image.
-            ret, self.camera_matrix, self.dist_coeffs, self.rvecs, self.tvecs = cv2.calibrateCamera(
-                objp, corners2, gray.shape[::-1], None, None
+            ret, self.camera_matrix, self.dist_coeffs, self.rvecs, self.tvecs = (
+                cv2.calibrateCamera(objp, corners2, gray.shape[::-1], None, None)
             )
 
             # Print calibration results in pretty format
@@ -340,7 +306,9 @@ class TiltCameraDewarper:
             print(f"Calibration RMS reprojection error: {ret} pixels")
             print("Camera intrinsic matrix: \n", self.camera_matrix)
             print("Camera distorion coeffs: \n")
-            print("\t radial [k1, k2, k3]: ", self.dist_coeffs[:2], self.dist_coeffs[-1])
+            print(
+                "\t radial [k1, k2, k3]: ", self.dist_coeffs[:2], self.dist_coeffs[-1]
+            )
             print("\t tangential [p1, p2]: ", self.dist_coeffs[2:4])
             print("Rotation vector (x, y, z): \n", self.rvecs)
             print("Translation vector (x, y, z): \n", self.tvecs)
@@ -352,7 +320,7 @@ class TiltCameraDewarper:
             print("=" * 40)
             return None
 
-    def demo_tilted_image():
+    def demo_tilted_image(self) -> None:
         # Create a sample image with text for demonstration
         sample_img = np.ones((400, 600, 3), dtype=np.uint8) * 255
         cv2.rectangle(sample_img, (50, 50), (550, 350), (0, 0, 0), 2)
@@ -391,12 +359,13 @@ class TiltCameraDewarper:
         image = cv2.warpPerspective(sample_img, matrix, (600, 400))
 
         print("Starting manual selection...")
-        dewarped_manual = dewarper.dewarp_manual(image.copy())
+        dewarped_manual = self.dewarp_manual(image.copy())
         cv2.imshow("Manual Dewarped", dewarped_manual)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-def demo_usage(image_path: str):
+
+def demo_usage(image_path: str) -> None:
     """
     Demonstration of how to use the TiltCameraDewarper class
     """
@@ -409,19 +378,21 @@ def demo_usage(image_path: str):
     if image is None:
         print(f"Could not load image: {image_path}")
         print("Creating a sample tilted image for demonstration...")
-        demo_tilted_image()
+        dewarper.demo_tilted_image()
         return
 
-    dewarped_manual = dewarper.calibrate_single_camera(
-            [image], pattern_size=(8, 6), square_size=25)
+    dewarp_image = dewarper.calibrate_single_camera(
+        image, pattern_size=(8, 6), square_size=25
+    )
 
     cv2.imshow("Dewarped Image", dewarp_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-    if image_path is not None:
-        # save_filename = os.path.splitext(image_path)[0]
-        # dewarper.save_calibration(save_filename, format="numpy")
+    # if image_path is not None:
+    #     save_filename = os.path.splitext(image_path)[0]
+    #     dewarper.save_calibration(save_filename, format="numpy")
+
 
 if __name__ == "__main__":
     # Read image path from cmd line
