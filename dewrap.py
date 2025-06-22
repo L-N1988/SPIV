@@ -11,10 +11,11 @@ import numpy as np
 
 class TiltCameraDewarper:
     def __init__(self):
-        self.src_points = None
-        self.dst_points = None
         self.transform_matrix = None
-        self.output_size = None
+        self.camera_matrix = None
+        self.dist_coeffs = None
+        self.rvecs = None
+        self.tvecs = None
 
     def manual_point_selection(
         self, image: np.ndarray, title: str = "Select 4 corners"
@@ -61,42 +62,6 @@ class TiltCameraDewarper:
         cv2.destroyAllWindows()
         return points
 
-    def auto_detect_rectangle(
-        self, image: np.ndarray, min_area: int = 1000
-    ) -> Optional[np.ndarray]:
-        """
-        Automatically detect rectangular objects in the image using contour detection.
-        """
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        # Apply Gaussian blur
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        # Edge detection
-        edges = cv2.Canny(blurred, 50, 150)
-
-        # Find contours
-        contours, _ = cv2.findContours(
-            edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
-        # Find the largest rectangular contour
-        for contour in sorted(contours, key=cv2.contourArea, reverse=True):
-            area = cv2.contourArea(contour)
-            if area < min_area:
-                continue
-
-            # Approximate contour to polygon
-            epsilon = 0.02 * cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, epsilon, True)
-
-            # If we found a quadrilateral
-            if len(approx) == 4:
-                return approx.reshape(4, 2)
-
-        return None
-
     def order_points(self, pts: np.ndarray) -> np.ndarray:
         """
         Order points in the order: top-left, top-right, bottom-right, bottom-left
@@ -142,64 +107,7 @@ class TiltCameraDewarper:
 
         return max_width, max_height
 
-    def dewarp_image(
-        self,
-        image: np.ndarray,
-        src_points: np.ndarray,
-        output_size: Optional[Tuple[int, int]] = None,
-    ) -> np.ndarray:
-        """
-        Perform perspective correction on the image
-        """
-        # Order the source points
-        src_points = self.order_points(src_points.astype(np.float32))
-        
-        # DEBUG code
-        # Print out selection points
-        for i, point in enumerate(src_points):
-            print(f"Point {i}: {point}")
-
-        # Calculate output size if not provided
-        if output_size is None:
-            width, height = self.calculate_output_size(src_points)
-        else:
-            width, height = output_size
-
-        # Define destination points (rectangle)
-        dst_points = np.array(
-            [[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]],
-            dtype="float32",
-        )
-
-        # Calculate perspective transform matrix
-        self.transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-
-        # Store calibration data
-        self.src_points = src_points
-        self.dst_points = dst_points
-        self.output_size = (width, height)
-
-        # Apply perspective correction
-        dewarped = cv2.warpPerspective(image, self.transform_matrix, (width, height))
-
-        return dewarped
-
-    def dewarp_automatic(
-        self, image: np.ndarray, min_area: int = 1000
-    ) -> Optional[np.ndarray]:
-        """
-        Automatically detect and dewarp the largest rectangular object in the image
-        """
-        detected_points = self.auto_detect_rectangle(image, min_area)
-
-        if detected_points is None:
-            print("No rectangular object detected. Try manual selection.")
-            return None
-
-        print(f"Detected rectangle with corners: {detected_points}")
-        return self.dewarp_image(image, detected_points)
-
-    def dewarp_manual(self, image: np.ndarray) -> np.ndarray:
+    def manual_selection_four_points(self, image: np.ndarray) -> List[Tuple[int, int]]:
         """
         Manual point selection and dewarping
         """
@@ -209,8 +117,9 @@ class TiltCameraDewarper:
             raise ValueError("Need exactly 4 points for perspective correction")
 
         src_points = np.array(points, dtype=np.float32)
-        return self.dewarp_image(image, src_points)
+        return self.order_points(src_points)
 
+    # TODO: update saved variables
     def save_calibration(self, filename: str, format: str = "numpy") -> None:
         """
         Save the calibration matrix and parameters to file
@@ -261,6 +170,7 @@ class TiltCameraDewarper:
 
         print(f"Calibration saved to: {filename}")
 
+    # TODO: update saved variables
     def load_calibration(self, filename: str, format: str = None) -> None:
         """
         Load calibration matrix and parameters from file
@@ -324,7 +234,7 @@ class TiltCameraDewarper:
             raise ValueError("No calibration loaded. Use load_calibration() first.")
 
         # Apply the stored transformation
-        dewarped = cv2.warpPerspective(image, self.transform_matrix, self.output_size)
+        dewarped = cv2.warpPerspective(image, self.transform_matrix, image.shape[:2][::-1])
         return dewarped
 
     def batch_process_images(
@@ -368,66 +278,81 @@ class TiltCameraDewarper:
             except Exception as e:
                 print(f"Error processing {img_path}: {str(e)}")
 
-    def visualize_calibration(self, original_image: np.ndarray) -> None:
-        """
-        Visualize the calibration points and transformation
-        """
-        if self.src_points is None:
-            print("No calibration data available")
-            return
-
-        # Create visualization
-        vis_img = original_image.copy()
-
-        # Draw source points and connections
-        pts = self.src_points.astype(int)
-        for i, pt in enumerate(pts):
-            cv2.circle(vis_img, tuple(pt), 8, (0, 255, 0), -1)
-            cv2.putText(
-                vis_img,
-                str(i + 1),
-                (pt[0] + 10, pt[1] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-            )
-
-        # Draw quadrilateral
-        cv2.polylines(vis_img, [pts], True, (255, 0, 0), 2)
-
-        cv2.imshow("Calibration Points", vis_img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-    def dewarp_with_known_points(
-        self, image: np.ndarray, points: List[Tuple[int, int]]
+    def calibrate_single_camera(
+        self,
+        image: np.ndarray,
+        pattern_size: Tuple[int, int] = (9, 6),
+        square_size: float = 1.0,
     ) -> np.ndarray:
         """
-        Dewarp using predefined points
+        Calibrate a single camera using checkerboard pattern
+
+        Args:
+            image: Calibration image
+            pattern_size: (width, height) of checkerboard internal corners
+            square_size: Size of checkerboard squares in world units
+
+        Returns:
+            output_image
         """
-        if len(points) != 4:
-            raise ValueError("Need exactly 4 points for perspective correction")
+        # Prepare object points (3D points in real world space)
+        objp = np.zeros((pattern_size[0] * pattern_size[1], 3), np.float32)
+        objp[:, :2] = np.mgrid[0 : pattern_size[0], 0 : pattern_size[1]].T.reshape(
+            -1, 2
+        )  # Assuming points at z=0 plane
+        objp *= square_size
 
-        src_points = np.array(points, dtype=np.float32)
-        return self.dewarp_image(image, src_points)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+        # Find checkerboard corners
+        ret, corners = cv2.findChessboardCorners(gray, pattern_size, None)
 
-def demo_usage(image_path: str):
-    """
-    Demonstration of how to use the TiltCameraDewarper class
-    """
-    # Initialize dewarper
-    dewarper = TiltCameraDewarper()
+        if ret is True:
+            # Refine corner positions
+            corners2 = cv2.cornerSubPix(
+                gray,
+                corners,
+                (11, 11),
+                (-1, -1),
+                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001),
+            )
 
-    # Load image (replace with your image path)
-    # image_path = "./figures/calibration_plate.jpg"  # Change this to your image path
-    image = cv2.imread(image_path)
+            # Compute the homography matrix
+            self.transform_matrix, _ = cv2.findHomography(corners2, objp)
 
-    if image is None:
-        print(f"Could not load image: {image_path}")
-        print("Creating a sample tilted image for demonstration...")
+            # Apply the homography transformation, preserve image size
+            output_image = cv2.warpPerspective(image, self.transform_matrix, image.shape[:2][::-1])
 
+            # Camera calibration
+            # ret: This is the primary return value and represents the root mean square (RMS) reprojection error. Values between 0.1 and 1.0 are considered good.
+            # camera_matrix: This is a 3x3 matrix that represents the intrinsic parameters of the camera.
+            # dist_coeffs: This is a vector (k1, k2, p1, p2, k3) that represents the distortion coefficients of the camera.
+            # rvecs: This is a vector that represents the rotation vector of the camera.  Each vector represents the rotation of the camera coordinate system relative to the world coordinate system for that specific image.
+            # tvecs: This is a vector that represents the translation vector of the camera.  Each vector represents the translation of the camera coordinate system relative to the world coordinate system for that specific image.
+            ret, self.camera_matrix, self.dist_coeffs, self.rvecs, self.tvecs = cv2.calibrateCamera(
+                objp, corners2, gray.shape[::-1], None, None
+            )
+
+            # Print calibration results in pretty format
+            np.set_printoptions(precision=3)
+            print("=" * 40)
+            print("-- Calibration Results -")
+            print(f"Calibration RMS reprojection error: {ret} pixels")
+            print("Camera intrinsic matrix: \n", self.camera_matrix)
+            print("Camera distorion coeffs: \n")
+            print("\t radial [k1, k2, k3]: ", self.dist_coeffs[:2], self.dist_coeffs[-1])
+            print("\t tangential [p1, p2]: ", self.dist_coeffs[2:4])
+            print("Rotation vector (x, y, z): \n", self.rvecs)
+            print("Translation vector (x, y, z): \n", self.tvecs)
+            print("=" * 40)
+            return output_image
+        else:
+            print("=" * 40)
+            print("Bad calibration result.")
+            print("=" * 40)
+            return None
+
+    def demo_tilted_image():
         # Create a sample image with text for demonstration
         sample_img = np.ones((400, 600, 3), dtype=np.uint8) * 255
         cv2.rectangle(sample_img, (50, 50), (550, 350), (0, 0, 0), 2)
@@ -465,34 +390,44 @@ def demo_usage(image_path: str):
         matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
         image = cv2.warpPerspective(sample_img, matrix, (600, 400))
 
-    # # Method 1: Automatic detection
-    # print("Trying automatic detection...")
-    # dewarped_auto = dewarper.dewarp_automatic(image.copy())
-    #
-    # if dewarped_auto is not None:
-    #     cv2.imshow("Original", image)
-    #     cv2.imshow("Auto Dewarped", dewarped_auto)
-    #     cv2.waitKey(0)
-    #     cv2.destroyAllWindows()
-    # else:
-    #     print("Automatic detection failed.")
+        print("Starting manual selection...")
+        dewarped_manual = dewarper.dewarp_manual(image.copy())
+        cv2.imshow("Manual Dewarped", dewarped_manual)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-    # Method 2: Manual selection (uncomment to use)
-    print("Starting manual selection...")
-    dewarped_manual = dewarper.dewarp_manual(image.copy())
-    cv2.imshow("Manual Dewarped", dewarped_manual)
+def demo_usage(image_path: str):
+    """
+    Demonstration of how to use the TiltCameraDewarper class
+    """
+    # Initialize dewarper
+    dewarper = TiltCameraDewarper()
+
+    # Load image (replace with your image path)
+    image = cv2.imread(image_path)
+
+    if image is None:
+        print(f"Could not load image: {image_path}")
+        print("Creating a sample tilted image for demonstration...")
+        demo_tilted_image()
+        return
+
+    dewarped_manual = dewarper.calibrate_single_camera(
+            [image], pattern_size=(8, 6), square_size=25)
+
+    cv2.imshow("Dewarped Image", dewarp_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    save_filename = os.path.splitext(image_path)[0]
-    dewarper.save_calibration(save_filename, format="numpy")
 
-    # Method 3: Using known points
-    # Example points (adjust for your image)
-    # known_points = [(100, 100), (500, 80), (520, 300), (80, 320)]
-    # dewarped_known = dewarper.dewarp_with_known_points(image, known_points)
-
+    if image_path is not None:
+        # save_filename = os.path.splitext(image_path)[0]
+        # dewarper.save_calibration(save_filename, format="numpy")
 
 if __name__ == "__main__":
     # Read image path from cmd line
-    image_path = sys.argv[1]
+    if len(sys.argv) < 2:
+        print("Usage: python dewarp.py <image_path>")
+        image_path = None
+    else:
+        image_path = sys.argv[1]
     demo_usage(image_path)
