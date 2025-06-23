@@ -14,8 +14,8 @@ class TiltCameraDewarper:
         self.transform_matrix = None
         self.camera_matrix = None
         self.dist_coeffs = None
-        self.rvecs = None
-        self.tvecs = None
+        self.rvec = None
+        self.tvec = None
 
     def manual_point_selection(
         self, image: np.ndarray, title: str = "Select 4 corners"
@@ -120,7 +120,7 @@ class TiltCameraDewarper:
         return self.order_points(src_points)
 
     # TODO: update saved variables
-    def save_calibration(self, filename: str, format: str = "numpy") -> None:
+    def save_calibration(self, filename: str, format: str = "numpy"):
         """
         Save the calibration matrix and parameters to file
 
@@ -171,7 +171,7 @@ class TiltCameraDewarper:
         print(f"Calibration saved to: {filename}")
 
     # TODO: update saved variables
-    def load_calibration(self, filename: str, format: str = None) -> None:
+    def load_calibration(self, filename: str, format: str = None):
         """
         Load calibration matrix and parameters from file
 
@@ -239,17 +239,19 @@ class TiltCameraDewarper:
         )
         return dewarped
 
-    def calibrate_single_camera(
+    def dewarp_single_camera(
         self,
-        image: np.ndarray,
+        images: List[np.ndarray],
+        target_image: np.ndarray,
         pattern_size: Tuple[int, int] = (9, 6),
         square_size: float = 1.0,
     ) -> np.ndarray:
         """
-        Calibrate a single camera using checkerboard pattern
+        Dewarp a single camera using checkerboard pattern
 
         Args:
-            image: Calibration image
+            image: List of Calibration image
+            target_image: Image of Calibration Plate in Target Plane
             pattern_size: (width, height) of checkerboard internal corners
             square_size: Size of checkerboard squares in world units
 
@@ -263,64 +265,133 @@ class TiltCameraDewarper:
         )  # Assuming points at z=0 plane
         objp *= square_size
 
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # Arrays to store object points and image points
+        # cv2.calibrateCamera need points in format of list not ndarray
+        objpoints = []  # 3D points in real world space
+        imgpoints = []  # 2D points in image plane
+        target_objp = [] # 3D points
+        target_imgp = [] # 2D points
 
+        for img in images:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Find checkerboard corners
+            ret, corners = cv2.findChessboardCorners(gray, pattern_size, None)
+
+            if ret is True:
+                objpoints.append(objp)
+
+                # Refine corner positions
+                corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1),
+                                            (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+                imgpoints.append(corners2)
+            else:
+                print("=" * 40)
+                print("Bad calibration result.")
+                print("=" * 40)
+                return None
+
+        # Search matched points in raw target image (FIXME: redundent code)
+        gray = cv2.cvtColor(target_image, cv2.COLOR_BGR2GRAY)
+        # FIXME: Calibration plate is not chessboard
         # Find checkerboard corners
         ret, corners = cv2.findChessboardCorners(gray, pattern_size, None)
 
         if ret is True:
+            target_objp = objp
             # Refine corner positions
-            corners2 = cv2.cornerSubPix(
-                gray,
-                corners,
-                (11, 11),
-                (-1, -1),
-                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001),
-            )
-
-            # Compute the homography matrix
-            # FIXME: findHomography args should be pixel dimension, so the objp should multiply pixel size
-            self.transform_matrix, _ = cv2.findHomography(corners2[:, 0, :], objp[:, :2])
-            print("Camera homography matrix: \n", self.transform_matrix)
-
-            # Apply the homography transformation (without correction for distortion)
-            # FIXME: correct distortion for output_image
-            output_image = cv2.warpPerspective(
-                image, self.transform_matrix, image.shape[:2][::-1]
-            )
-
-            # FIXME: Camera calibration
-            # ret: This is the primary return value and represents the root mean square (RMS) reprojection error. Values between 0.1 and 1.0 are considered good.
-            # camera_matrix: This is a 3x3 matrix that represents the intrinsic parameters of the camera.
-            # dist_coeffs: This is a vector (k1, k2, p1, p2, k3) that represents the distortion coefficients of the camera.
-            # rvecs: This is a vector that represents the rotation vector of the camera.  Each vector represents the rotation of the camera coordinate system relative to the world coordinate system for that specific image.
-            # tvecs: This is a vector that represents the translation vector of the camera.  Each vector represents the translation of the camera coordinate system relative to the world coordinate system for that specific image.
-            ret, self.camera_matrix, self.dist_coeffs, self.rvecs, self.tvecs = (
-                cv2.calibrateCamera(objp, corners2, gray.shape[::-1], None, None)
-            )
-
-            # Print calibration results in pretty format
-            np.set_printoptions(precision=3)
-            print("=" * 40)
-            print("-- Calibration Results -")
-            print(f"Calibration RMS reprojection error: {ret} pixels")
-            print("Camera intrinsic matrix: \n", self.camera_matrix)
-            print("Camera distorion coeffs: \n")
-            print(
-                "\t radial [k1, k2, k3]: ", self.dist_coeffs[:2], self.dist_coeffs[-1]
-            )
-            print("\t tangential [p1, p2]: ", self.dist_coeffs[2:4])
-            print("Rotation vector (x, y, z): \n", self.rvecs)
-            print("Translation vector (x, y, z): \n", self.tvecs)
-            print("=" * 40)
-            return output_image
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1),
+                                        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+            target_imgp = corners2
         else:
             print("=" * 40)
             print("Bad calibration result.")
             print("=" * 40)
             return None
 
-    def demo_tilted_image(self) -> None:
+        # Temp solution 1
+        # grid_size = 64  # Pixels per square
+        # objpoints *= grid_size
+        # imgpoints *= grid_size
+        # target_objp *= grid_size
+        # target_imgp *= grid_size
+
+        # Compute the homography matrix
+        # FIXME: findHomography args should be pixel dimension, so the objp should multiply pixel size
+        # Better solution: use solvePnP to estimate matrix that tramsfrom points in world coordinate into pixel coordinate
+        # self.transform_matrix, _ = cv2.findHomography(corners2[:, 0, :], objp[:, :2])
+        # print("Camera homography matrix: \n", self.transform_matrix)
+
+        # Apply the homography transformation (without correction for distortion)
+        # FIXME: correct distortion for output_image
+        # output_image = cv2.warpPerspective(
+        #     target_image, self.transform_matrix, image.shape[:2][::-1]
+        # )
+
+        # FIXME: Camera calibration, need multiple images to estimate camera intrinsic matrix and distortion coefficients
+        # stdev: This is the primary return value and represents the root mean square (RMS) reprojection error. Values between 0.1 and 1.0 are considered good.
+        # camera_matrix: This is a 3x3 matrix that represents the intrinsic parameters of the camera.
+        # dist_coeffs: This is a vector (k1, k2, p1, p2, k3) that represents the distortion coefficients of the camera.
+        # rvecs: This is a vector that represents the rotation vector of the camera.  Each vector represents the rotation of the camera coordinate system relative to the world coordinate system for that specific image.
+        # tvecs: This is a vector that represents the translation vector of the camera.  Each vector represents the translation of the camera coordinate system relative to the world coordinate system for that specific image.
+        stdev, self.camera_matrix, self.dist_coeffs, rvecs, tvecs = (
+            cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+        )
+
+        # Estimate extrinsic matrix from target image
+        # rotation vector and translation vector of the camera coordinate system relative to the world coordinate system
+        ret, self.rvec, self.tvec = (
+            cv2.solvePnP(target_objp, target_imgp, self.camera_matrix, self.dist_coeffs)
+        )
+        rotation_matrix, _ = cv2.Rodrigues(self.rvec)
+
+        # Apply rotation matrix and translation vector to object points (in world coordinate), the results are in camera coordinate
+
+        # Compute the homography matrix
+        self.transform_matrix, _ = cv2.findHomography(target_imgp[:, 0, :], target_objp[:, :2])
+        print("Camera homography matrix: \n", self.transform_matrix)
+
+        # Temp solution 2
+        # Take the four corners of the input image
+        h, w = target_image.shape[:2]
+        img_corners = np.array([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]], dtype=np.float32)
+        # Transform them using the homography
+        corners_transformed = cv2.perspectiveTransform(corners.reshape(-1, 1, 2), self.transform_matrix)
+        corners_transformed = corners_transformed.reshape(-1, 2)
+        # Find the bounding box
+        min_x, min_y = np.min(corners_transformed, axis=0).astype(int)
+        max_x, max_y = np.max(corners_transformed, axis=0).astype(int)
+        width_out = max_x - min_x + 1
+        height_out = max_y - min_y + 1
+
+        # Apply the homography transformation (without correction for distortion)
+        output_image = cv2.warpPerspective(
+            target_image, self.transform_matrix, (width_out, height_out)
+        )
+
+        # DEUBG code
+        cv2.imshow("Dewarped Image", output_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+        # Print calibration results in pretty format
+        np.set_printoptions(precision=3)
+        print("=" * 60)
+        print('-'*10 + " Calibration Results " + '-'*10)
+        print(f"Calibration RMS reprojection error: {stdev:.3f} pixels")
+        print("Camera intrinsic matrix: \n", self.camera_matrix)
+        print("Camera distorion coeffs [k1, k2, p1, p2, k3]: ", self.dist_coeffs)
+        # print(
+        #     "\t radial [k1, k2, k3]: ", self.dist_coeffs[:2], self.dist_coeffs[-1]
+        # )
+        # print("\t tangential [p1, p2]: ", self.dist_coeffs[2:4])
+        print("Rotation vector (x, y, z): ", self.rvec.T)
+        print("Rotation Matrix:\n", rotation_matrix)
+        print("Translation vector (x, y, z): ", self.tvec.T)
+        print("=" * 60)
+        return output_image
+
+    def demo_tilted_image(self):
         # Create a sample image with text for demonstration
         sample_img = np.ones((400, 600, 3), dtype=np.uint8) * 255
         cv2.rectangle(sample_img, (50, 50), (550, 350), (0, 0, 0), 2)
@@ -365,13 +436,14 @@ class TiltCameraDewarper:
         cv2.destroyAllWindows()
 
 
-def demo_usage(image_path: str) -> None:
+def demo_usage(image_path: str):
     """
     Demonstration of how to use the TiltCameraDewarper class
     """
     # Initialize dewarper
     dewarper = TiltCameraDewarper()
 
+    calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1, 8)]
     # Load image (replace with your image path)
     image = cv2.imread(image_path)
 
@@ -379,10 +451,10 @@ def demo_usage(image_path: str) -> None:
         print(f"Could not load image: {image_path}")
         print("Creating a sample tilted image for demonstration...")
         dewarper.demo_tilted_image()
-        return
+        exit(0)
 
-    dewarp_image = dewarper.calibrate_single_camera(
-        image, pattern_size=(8, 6), square_size=25
+    dewarp_image = dewarper.dewarp_single_camera(
+        calibration_images, image, pattern_size=(8, 6), square_size=25
     )
 
     cv2.imshow("Dewarped Image", dewarp_image)
@@ -397,8 +469,8 @@ def demo_usage(image_path: str) -> None:
 if __name__ == "__main__":
     # Read image path from cmd line
     if len(sys.argv) < 2:
-        print("Usage: python dewarp.py <image_path>")
-        image_path = None
+        print("Usage: python dewarp.py <image_path>\nUsing default image.\n")
+        image_path = "./figures/checkerboard.jpg"
     else:
         image_path = sys.argv[1]
     demo_usage(image_path)
