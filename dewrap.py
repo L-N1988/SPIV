@@ -310,11 +310,8 @@ class TiltCameraDewarper:
             return None
 
         # Temp solution 1
-        # grid_size = 64  # Pixels per square
-        # objpoints *= grid_size
-        # imgpoints *= grid_size
-        # target_objp *= grid_size
-        # target_imgp *= grid_size
+        grid_size = 10  # Pixels per mm
+        target_objp *= grid_size
 
         # Compute the homography matrix
         # FIXME: findHomography args should be pixel dimension, so the objp should multiply pixel size
@@ -370,6 +367,7 @@ class TiltCameraDewarper:
         )
 
         # DEUBG code
+        cv2.imwrite("saved_cv_image.png", output_image)
         cv2.imshow("Dewarped Image", output_image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -380,14 +378,14 @@ class TiltCameraDewarper:
         print('-'*10 + " Calibration Results " + '-'*10)
         print(f"Calibration RMS reprojection error: {stdev:.3f} pixels")
         print("Camera intrinsic matrix: \n", self.camera_matrix)
-        print("Camera distorion coeffs [k1, k2, p1, p2, k3]: ", self.dist_coeffs)
-        # print(
-        #     "\t radial [k1, k2, k3]: ", self.dist_coeffs[:2], self.dist_coeffs[-1]
-        # )
-        # print("\t tangential [p1, p2]: ", self.dist_coeffs[2:4])
-        print("Rotation vector (x, y, z): ", self.rvec.T)
+        print("Camera distorion coeffs [k1, k2, p1, p2, k3]: ", self.dist_coeffs[0])
+        print(
+            "\t radial [k1, k2, k3]: ", np.append(self.dist_coeffs[0][:2], self.dist_coeffs[0][-1])
+        )
+        print("\t tangential [p1, p2]: ", self.dist_coeffs[0][2:4])
+        print("Rotation vector (x, y, z): ", self.rvec.T[0])
         print("Rotation Matrix:\n", rotation_matrix)
-        print("Translation vector (x, y, z): ", self.tvec.T)
+        print("Translation vector (x, y, z): ", self.tvec.T[0])
         print("=" * 60)
         return output_image
 
