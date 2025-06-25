@@ -310,8 +310,8 @@ class TiltCameraDewarper:
             return None
 
         # Temp solution 1
-        grid_size = 10  # Pixels per mm
-        target_objp *= grid_size
+        scale_factor = 2  # Pixels per mm (map to object plane)
+        target_objp *= scale_factor
 
         # Compute the homography matrix
         # FIXME: findHomography args should be pixel dimension, so the objp should multiply pixel size
@@ -334,6 +334,8 @@ class TiltCameraDewarper:
         stdev, self.camera_matrix, self.dist_coeffs, rvecs, tvecs = (
             cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
         )
+        # Note: https://stackoverflow.com/a/69161589/18736354
+        # "focal length" (unit pixels) in the camera matrix: it describes a scale factor for mapping the real world to a picture of a certain resolution
 
         # Estimate extrinsic matrix from target image
         # rotation vector and translation vector of the camera coordinate system relative to the world coordinate system
@@ -363,7 +365,8 @@ class TiltCameraDewarper:
 
         # Apply the homography transformation (without correction for distortion)
         output_image = cv2.warpPerspective(
-            target_image, self.transform_matrix, (width_out, height_out)
+                # target_image, self.transform_matrix, (width_out, height_out)
+                target_image, self.transform_matrix, target_image.shape[:2][::-1]
         )
 
         # DEUBG code
@@ -378,6 +381,7 @@ class TiltCameraDewarper:
         print('-'*10 + " Calibration Results " + '-'*10)
         print(f"Calibration RMS reprojection error: {stdev:.3f} pixels")
         print("Camera intrinsic matrix: \n", self.camera_matrix)
+        print("\t principal point: ", self.camera_matrix[:2, 2])
         print("Camera distorion coeffs [k1, k2, p1, p2, k3]: ", self.dist_coeffs[0])
         print(
             "\t radial [k1, k2, k3]: ", np.append(self.dist_coeffs[0][:2], self.dist_coeffs[0][-1])
