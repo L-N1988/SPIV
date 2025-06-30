@@ -321,12 +321,6 @@ class TiltCameraDewarper:
         # Note: https://stackoverflow.com/a/69161589/18736354
         # "focal length" (unit pixels) in the camera matrix: it describes a scale factor for mapping the real world to a picture of a certain resolution
 
-        # FIXME: how to determine scale_factor from calibration
-        # A not good estimation
-        # f_x, f_y, t_z = self.camera_matrix[0, 0], self.camera_matrix[1, 1], 
-        scale_factor = 2  # Pixels per mm (map to object plane)
-        target_objp *= scale_factor
-
         # Estimate extrinsic matrix from target image
         # rotation vector and translation vector of the camera coordinate system relative to the world coordinate system
         # roatation vector is independent with scale_factor, 
@@ -338,8 +332,12 @@ class TiltCameraDewarper:
 
         # Apply rotation matrix and translation vector to object points (in world coordinate), the results are in camera coordinate
 
+        # FIXME: how to determine scale_factor from calibration
+        # zoom target_objp in image plane for visulization, no more need for estimate camera parameters
+        scale_factor = 1/2 * (self.camera_matrix[0, 0] + self.camera_matrix[1, 1]) / self.tvec[2]  # not good estimation [pixels per mm]
         # Compute the homography matrix
-        self.transform_matrix, _ = cv2.findHomography(target_imgp[:, 0, :], target_objp[:, :2])
+        self.transform_matrix, _ = cv2.findHomography(target_imgp[:, 0, :], target_objp[:, :2] * scale_factor)
+        print("Camera scale factor: ", scale_factor[0])
         print("Camera homography matrix: \n", self.transform_matrix)
 
         # Temp solution 2
@@ -357,8 +355,8 @@ class TiltCameraDewarper:
 
         # Apply the homography transformation (without correction for distortion)
         output_image = cv2.warpPerspective(
-                # target_image, self.transform_matrix, (width_out, height_out)
-                target_image, self.transform_matrix, target_image.shape[:2][::-1]
+            target_image, self.transform_matrix, (width_out, height_out)
+            # target_image, self.transform_matrix, target_image.shape[:2][::-1]
         )
 
         # DEUBG code
