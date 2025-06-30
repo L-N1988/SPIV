@@ -309,23 +309,7 @@ class TiltCameraDewarper:
             print("=" * 40)
             return None
 
-        # Temp solution 1
-        scale_factor = 2  # Pixels per mm (map to object plane)
-        target_objp *= scale_factor
-
-        # Compute the homography matrix
-        # FIXME: findHomography args should be pixel dimension, so the objp should multiply pixel size
-        # Better solution: use solvePnP to estimate matrix that tramsfrom points in world coordinate into pixel coordinate
-        # self.transform_matrix, _ = cv2.findHomography(corners2[:, 0, :], objp[:, :2])
-        # print("Camera homography matrix: \n", self.transform_matrix)
-
-        # Apply the homography transformation (without correction for distortion)
-        # FIXME: correct distortion for output_image
-        # output_image = cv2.warpPerspective(
-        #     target_image, self.transform_matrix, image.shape[:2][::-1]
-        # )
-
-        # FIXME: Camera calibration, need multiple images to estimate camera intrinsic matrix and distortion coefficients
+        # Camera calibration, need multiple images to estimate camera intrinsic matrix and distortion coefficients
         # stdev: This is the primary return value and represents the root mean square (RMS) reprojection error. Values between 0.1 and 1.0 are considered good.
         # camera_matrix: This is a 3x3 matrix that represents the intrinsic parameters of the camera.
         # dist_coeffs: This is a vector (k1, k2, p1, p2, k3) that represents the distortion coefficients of the camera.
@@ -337,8 +321,16 @@ class TiltCameraDewarper:
         # Note: https://stackoverflow.com/a/69161589/18736354
         # "focal length" (unit pixels) in the camera matrix: it describes a scale factor for mapping the real world to a picture of a certain resolution
 
+        # FIXME: how to determine scale_factor from calibration
+        # A not good estimation
+        # f_x, f_y, t_z = self.camera_matrix[0, 0], self.camera_matrix[1, 1], 
+        scale_factor = 2  # Pixels per mm (map to object plane)
+        target_objp *= scale_factor
+
         # Estimate extrinsic matrix from target image
         # rotation vector and translation vector of the camera coordinate system relative to the world coordinate system
+        # roatation vector is independent with scale_factor, 
+        # translation vector varies linearly with scale_factor
         ret, self.rvec, self.tvec = (
             cv2.solvePnP(target_objp, target_imgp, self.camera_matrix, self.dist_coeffs)
         )
@@ -383,6 +375,7 @@ class TiltCameraDewarper:
         print("Camera intrinsic matrix: \n", self.camera_matrix)
         print("\t principal point: ", self.camera_matrix[:2, 2])
         print("Camera distorion coeffs [k1, k2, p1, p2, k3]: ", self.dist_coeffs[0])
+        # According to Tsai's model, only radial distortion needs to be condsidered for industrial machine vision application[s].
         print(
             "\t radial [k1, k2, k3]: ", np.append(self.dist_coeffs[0][:2], self.dist_coeffs[0][-1])
         )
