@@ -286,9 +286,9 @@ class TiltCameraDewarper:
                                             (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
                 imgpoints.append(corners2)
             else:
-                print("=" * 40)
+                print("=" * 60)
                 print("Bad calibration result.")
-                print("=" * 40)
+                print("=" * 60)
                 return None
 
         # Search matched points in raw target image (FIXME: redundent code)
@@ -304,9 +304,9 @@ class TiltCameraDewarper:
                                         (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
             target_imgp = corners2
         else:
-            print("=" * 40)
+            print("=" * 60)
             print("Bad calibration result.")
-            print("=" * 40)
+            print("=" * 60)
             return None
 
         # Camera calibration, need multiple images to estimate camera intrinsic matrix and distortion coefficients
@@ -340,7 +340,6 @@ class TiltCameraDewarper:
         print("Camera scale factor: ", scale_factor[0])
         print("Camera homography matrix: \n", self.transform_matrix)
 
-        # Temp solution 2
         # Take the four corners of the input image
         h, w = target_image.shape[:2]
         img_corners = np.array([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]], dtype=np.float32)
