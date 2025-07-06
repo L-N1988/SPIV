@@ -66,6 +66,52 @@ class SPIVSelfCalibration:
         print("Reconstructed 3D points:")
         print(points3D)
         return points3D
+    
+    def fitted_plane(self, points3D):
+        """
+        Fit a plane to the 3D points.
+        points3D: 3D points in Cartesian coordinates (shape: 3xN)
+        Returns: Plane coefficients (A, B, C, D) for the equation Ax + By + Cz + D = 0
+        """
+        print("Fitting a plane to the 3D points...")
+        # Use SVD to fit a plane to the points
+        A = np.c_[points3D[0], points3D[1], points3D[2], np.ones(points3D.shape[1])]
+        _, _, Vt = np.linalg.svd(A)
+        plane_coeffs = Vt[-1]  # [A, B, C, D]
+
+        print("Plane coefficients:", plane_coeffs)
+        return plane_coeffs
+    
+    def plane_to_xy_transform(self, plane_coeffs):
+        """
+        Given plane coefficients (A, B, C, D), return a 4x4 transformation matrix
+        that maps the plane to the XY-plane (z'=0).
+        """
+        A, B, C, D = plane_coeffs
+        normal = np.array([A, B, C])
+        norm = np.linalg.norm(normal)
+        if norm == 0:
+            raise ValueError("Invalid plane: zero normal vector")
+        z_axis = normal / norm  # new Z direction base vector
+
+        # Pick an x direction from left camera (#1)
+        x_axis = self.left_camera.camera_matrix[:3, 0] # TODO: use a more robust method to find x_axis
+        x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+
+        # Pick new origin point on the plane from left camera (#1)
+        p0 = -D / (norm ** 2) * normal # TODO: use a more robust method to find p0
+        
+        # Rotation matrix from world to local frame
+        R = np.vstack([x_axis, y_axis, z_axis])
+
+        # Affine transformation matrix
+        T = np.eye(4)
+        T[:3, :3] = R
+        T[:3, 3] = -R @ p0
+
+        return T
+
 
     def calibrate(self):
         # Placeholder for calibration logic
@@ -73,37 +119,3 @@ class SPIVSelfCalibration:
         # In a real scenario, you would use cv2.stereoCalibrate here
         # to compute the essential matrix and rectify the images.
         pass
-
-
-# Assume you have calibrated your cameras and obtained the projection matrices
-# P1 and P2 for the two cameras, and corresponding 2D points in each image.
-# These matrices are 3x4 and represent the mapping from 3D world coordinates
-# to 2D image coordinates.
-
-# Example: Placeholder projection matrices (replace with your actual matrices)
-# For a real scenario, these come from camera calibration (e.g., cv2.stereoCalibrate)
-P1 = np.array([[1, 0, 0, 0],
-               [0, 1, 0, 0],
-               [0, 0, 1, -20]], dtype=np.float64)
-
-P2 = np.array([[1, 0, 0, -50],  # Example: Camera 2 shifted on X-axis
-               [0, 1, 0, 0],
-               [0, 0, 1, -20]], dtype=np.float64)
-
-# Example: Corresponding 2D points in image 1 and image 2
-# These would typically be found using feature matching (e.g., SIFT, ORB)
-# and correspondence finding (e.g., RANSAC for essential matrix estimation).
-points1 = np.array([[0, 0]], dtype=np.float64).T # Transpose to 2xN
-points2 = np.array([[-5, 0]], dtype=np.float64).T # Transpose to 2xN
-
-# Triangulate the 3D points
-# The output 'points4D' will be 4xN, representing homogeneous coordinates (x, y, z, w)
-points4D = cv2.triangulatePoints(P1, P2, points1, points2)
-
-# Convert homogeneous coordinates to 3D Cartesian coordinates
-# Divide by the 'w' component
-points3D = points4D[:3] / points4D[3]
-
-print("Reconstructed 3D points:")
-print(points3D)
-print(f"{points4D=}")

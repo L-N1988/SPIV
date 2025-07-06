@@ -96,57 +96,161 @@ $$
 
 \end{frame}
 
+\section{Camera parameters}
+
 \begin{frame}{Frame vs Coordinate transformation}
 
   \begin{columns}
-    \begin{column}{0.5\textwidth}
+    \begin{column}{0.7\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=0.9\textwidth]{figures/coord-frame.pdf}
+        \caption{Frame vs Coordinate transformation. \href{https://staff.fnwi.uva.nl/r.vandenboomgaard/ComputerVision/LectureNotes/MATH/homogenous.html\#coordinate-frame-transforms}{Source}}
+      \end{figure}
+    \end{column}
+    
+    \begin{column}{0.3\textwidth}
 \begin{itemize}
-  \item Frame transform matrix
+  \item Frame transform matrix \footnotemark[3]
   \begin{align*}
     F = \begin{bmatrix}
     \mathbf{R} & \mathbf{t} \\
     \mathbf{0}^T & 1
     \end{bmatrix}.
   \end{align*}
- \item Coordinate transform matrix
+ \item Coordinate transform matrix \footnotemark[4]
    \begin{align*}
     F^{-1} = \begin{bmatrix}
-    \mathbf{R}^T & -\mathbf{R^T t} \\
+    \mathbf{R}^T & -\mathbf{R}^T\mathbf{t} \\
     \mathbf{0}^T & 1
     \end{bmatrix}.
    \end{align*}
 \end{itemize}
     \end{column}
 
-    \begin{column}{0.5\textwidth}
-      \begin{figure}
-        \centering
-        \includegraphics[width=0.8\textwidth]{figures/coord-frame.pdf}
-        \caption{Frame vs Coordinate transformation. \href{https://staff.fnwi.uva.nl/r.vandenboomgaard/ComputerVision/LectureNotes/MATH/homogenous.html\#coordinate-frame-transforms}{Source}}
-      \end{figure}
-    \end{column}
   \end{columns}
+  \footnotetext[3]{Frame transformation是将一个坐标系的原点和方向变换到另一个坐标系。}
+  \footnotetext[4]{Coordinate transformation是将一个坐标系中的点转换到另一个坐标系中。}
 
 \end{frame}
 
-\begin{frame}{Extrinsic parameters: camera pose}
-  \begin{columns}
-    \begin{column}{0.3\textwidth}
-      \begin{itemize}
-        \item 相机外参描述相机在世界坐标系中的位置和方向。
-        \item 通常用旋转矩阵 $\mathbf{R}$ 和平移向量 $\mathbf{t}$ 表示。
-      \end{itemize}
-    \end{column}
+\begin{frame}{Frames in camera system}
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/camera-frames.png}
+    \caption{Frames in camera system. \href{https://www.cs.cmu.edu/~16385/s17/Slides/11.1\_Camera\_matrix.pdf}{Source}}
+  \end{figure}
+\end{frame}
 
-    \begin{column}{0.7\textwidth}
+\begin{frame}{Extrinsic parameters: world to camera coordinate}
       \begin{figure}
         \centering
-        \includegraphics[width=0.9\textwidth]{figures/extrinsic-parameters.png}
+        \includegraphics[width=0.75\textwidth]{figures/extrinsic-parameters.png}
         \caption{Extrinsic parameters of a camera. \href{https://www.cs.cmu.edu/~16385/s17/Slides/11.1\_Camera\_matrix.pdf}{Source}}
       \end{figure}
+  
+      \begin{itemize}
+        \item 相机外参描述相机在世界坐标系中的位置和方向。
+        \item 通常用旋转矩阵 $\mathbf{R} := \mathbf{O}_{dummy}\text{-}{xyz}_{world} \to \mathbf{O}_{dummy}\text{-}{xyz}_{camera}$ 和平移向量 $\mathbf{t} := \mathbf{O}_{world} \to \mathbf{O}_{camera}$ 表示。
+      \end{itemize}
+\end{frame}
+
+
+\begin{frame}{Extrinsic parameters: world coordinate to camera coordinate}
+  已知世界坐标系到相机坐标系的变换关系，
+  \begin{align*}
+    F = \begin{bmatrix}
+    \mathbf{R} & \mathbf{t} \\
+    \mathbf{0}^T & 1
+    \end{bmatrix}.
+  \end{align*}
+  世界坐标系中的点转换为相机坐标系中可表示为:
+  \begin{align*}
+    \begin{bmatrix} X_c \\ Y_c \\ Z_c \\ 1 \end{bmatrix}  = 
+    \begin{bmatrix}
+    \mathbf{R}^T & -\mathbf{R}^T\mathbf{t} \\
+    \mathbf{0}^T & 1
+    \end{bmatrix}
+    \begin{bmatrix} X_w \\ Y_w \\ Z_w \\ 1 \end{bmatrix}.
+  \end{align*}
+  在非齐次坐标系中，上述变换矩阵可以简化为
+  \begin{align*}
+    \mathbf{R}^T [\mathbf{I} \mid -\mathbf{t}].
+  \end{align*}
+\end{frame}
+
+\begin{frame}{Intrinsic parameters: camera coordinate to image coordinate}
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/pinhole-similarity.png}
+    \caption{Points in camera coordinates to image coordinates. \href{https://www.cs.cmu.edu/~16385/s17/Slides/11.1\_Camera\_matrix.pdf}{Source}}
+  \end{figure}
+\end{frame}
+
+\begin{frame}{Intrinsic parameters: camera coordinate to image coordinate}
+  \begin{columns}
+    \begin{column}{0.6\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=0.55\textwidth]{figures/intrinsic-parameters.png}
+        \caption{Intrinsic parameters of a camera. \href{https://www.cs.cmu.edu/~16385/s17/Slides/11.1\_Camera\_matrix.pdf}{Source}. 注意图片中的箭头方向是错误的，应该反过来。}
+      \end{figure}
+    \end{column}
+    
+    \begin{column}{0.4\textwidth}
+      \begin{align*}
+        \mathbf{K} = \begin{bmatrix}
+        f_x & 0 & c_x \\
+        0 & f_y & c_y \\
+        0 & 0 & 1
+        \end{bmatrix}.
+      \end{align*}
     \end{column}
   \end{columns}
-  
+
+  \begin{itemize}
+    \item 相机内参描述相机的光学特性和成像几何。
+    \item 通常用焦距 $f_x, f_y$、主点坐标 $(c_x, c_y)$ 和畸变系数 $\mathbf{k}$ 表示。
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Takeaway msg}
+  \begin{columns}
+    \begin{column}{0.6\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=0.6\textwidth]{figures/cv-pinhole-camera-model.png}
+        \caption{Pinhole camera model. \href{https://docs.opencv.org/4.x/d9/d0c/group\_\_calib3d.html}{Source}}
+      \end{figure}
+    \end{column}
+    
+    \begin{column}{0.4\textwidth}
+      变换矩阵$\mathbf{P}$非齐次坐标系下的表达式为:
+      \begin{align*}
+        \mathbf{P} = \mathbf{K} \mathbf{R}^T [\mathbf{I} \mid -\mathbf{t}].
+      \end{align*}
+      
+      更常见的是齐次坐标系下的表达式:
+      \begin{align*}
+        \mathbf{P} = \mathbf{K} \begin{bmatrix}
+        \mathbf{R}^T & -\mathbf{R}^T\mathbf{t} \\
+        \mathbf{0}^T & 1
+        \end{bmatrix}.
+      \end{align*}
+    \end{column}
+  \end{columns}
+  \begin{itemize}
+    \item $\mathbf{P}$ 是相机的投影矩阵，将三维世界坐标系中的点投影到二维图像平面上。
+    \item $\mathbf{K}$ 是相机内参矩阵，包含焦距和主点位置等信息。
+    \item $\mathbf{R}$ 是相机外参的旋转矩阵，描述相机坐标系相对于世界坐标系的旋转。
+    \item $\mathbf{t}$ 是相机外参的平移向量，描述相机坐标系原点相对于世界坐标系原点的平移。
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Estimate the camera parameters using OpenCV}
+\end{frame}
+
+\begin{frame}{3D reconstruction from stereo PIV}
 \end{frame}
 
 \end{document}
