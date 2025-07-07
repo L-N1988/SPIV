@@ -89,28 +89,26 @@ class SPIVSelfCalibration:
         """
         A, B, C, D = plane_coeffs
         normal = np.array([A, B, C])
-        norm = np.linalg.norm(normal)
+        norm = np.linalg.norm(normal) # L2 norm of the plane normal vector
         if norm == 0:
             raise ValueError("Invalid plane: zero normal vector")
         z_axis = normal / norm  # new Z direction base vector
 
         # Pick an x direction from left camera (#1)
-        x_axis = self.left_camera.camera_matrix[:3, 0] # TODO: use a more robust method to find x_axis
+        # Ref: https://math.stackexchange.com/a/2967611/1063060
+        x_axis_left = self.left_camera.camera_matrix[:3, 0]  # x-axis of the left camera
+        # Project x_axis_left onto the plane
+        x_axis = x_axis_left - np.dot(x_axis_left, z_axis) * z_axis
         x_axis /= np.linalg.norm(x_axis)
         y_axis = np.cross(z_axis, x_axis)
 
-        # Pick new origin point on the plane from left camera (#1)
-        p0 = -D / (norm ** 2) * normal # TODO: use a more robust method to find p0
-        
+        p0 = -D / (norm ** 2) * normal # Project the calibration plate origin onto the new fitted plane
+
         # Rotation matrix from world to local frame
-        R = np.vstack([x_axis, y_axis, z_axis])
-
-        # Affine transformation matrix
-        T = np.eye(4)
-        T[:3, :3] = R
-        T[:3, 3] = -R @ p0
-
-        return T
+        dR = np.vstack([x_axis, y_axis, z_axis])
+        # Translation vector from world to local frame
+        dT = -dR @ p0
+        return dR, dT
 
 
     def calibrate(self):
