@@ -435,7 +435,7 @@ def demo_usage(image_path: str):
     # Initialize dewarper
     dewarper = TiltCameraDewarper()
 
-    calibration_images = [cv2.imread(f"./left_calibration_figs/{i:02d}.jpg") for i in range(1, 8)]
+    calibration_images = [cv2.imread(f"./phantom_cali_figs/{i:02d}.tif") for i in range(1, 4)]
     # Load image (replace with your image path)
     image = cv2.imread(image_path)
 
